@@ -213,9 +213,38 @@ class NonExchangeableIdToken
             );
         }
 
-        // Extract shop from dest claim
+        // Validate shop URL format - dest must end with .myshopify.com
         $dest = $payload['dest'] ?? '';
-        $shop = str_replace(['.myshopify.com', 'https://'], '', $dest);
+        $shopWithoutProtocol = preg_replace('#^https?://#', '', $dest);
+        $invalidDestResult = new ResultWithNonExchangeableIdToken(
+            ok: false,
+            shop: null,
+            idToken: null,
+            log: new LogWithReq(
+                code: 'invalid_dest',
+                detail: "Expected idToken.claims.dest to be a valid shop URL (e.g., 'https://shop.myshopify.com' or 'shop.myshopify.com'). Respond 401 Unauthorized using the provided response.",
+                req: Request::redactForLog($req)
+            ),
+            response: new ResponseInfo(
+                status: 401,
+                body: 'Unauthorized',
+                headers: (object)[]
+            )
+        );
+
+        if (!str_ends_with($shopWithoutProtocol, '.myshopify.com')) {
+            return $invalidDestResult;
+        }
+
+        // Extract shop name by removing the .myshopify.com suffix
+        $shopName = substr($shopWithoutProtocol, 0, -strlen('.myshopify.com'));
+
+        // Validate the extracted shop name against the allowed pattern
+        if (!preg_match('/^[a-zA-Z0-9][a-zA-Z0-9\-]*$/', $shopName)) {
+            return $invalidDestResult;
+        }
+
+        $shop = $shopName;
 
         return new ResultWithNonExchangeableIdToken(
             ok: true,
